@@ -4,10 +4,12 @@ python-dotenv==1.0.1
 pydantic==2.12.5
 pydantic-settings==2.9.1
 httpx==0.28.1          # async HTTP — GitHub API metadata fetch
+numpy                  # RAG index vectors (already a transitive dep via scipy/torch)
 
-# Repository ingestion — embedding / vector store (Sub-Task 5)
-# chromadb==0.5.20
+# Optional: richer semantic embeddings (Task 6A)
+# Set EMBED_PROVIDER=sentence-transformers to activate.
 # sentence-transformers==3.3.1
 
-# LLM providers (Sub-Task 4)
-# google-generativeai==0.8.3
+# LLM providers (Task 6B)
+# Uncomment the provider you want to use and set the matching env var.
+# google-generativeai==0.8.3   # GEMINI_API_KEY
