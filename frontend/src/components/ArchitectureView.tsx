@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import type { ArchComponent } from '../types'
-import type { FlowLayer } from '../mockData'
+import type { ArchComponent, ArchLayer } from '../types'
 
 // ── Component card colors ────────────────────────────────────────────────────
 
@@ -15,7 +14,7 @@ const ROLE_COLORS: Record<string, { ring: string; bg: string; text: string; dot:
   'Build Tool':      { ring: 'border-gray-600/60',   bg: 'bg-gray-800/50',   text: 'text-gray-300',   dot: 'bg-gray-500'   },
 }
 
-const FLOW_LAYER_COLORS: Record<FlowLayer['color'], {
+const FLOW_LAYER_COLORS: Record<string, {
   border: string; bg: string; label: string; nodeBorder: string; nodeBg: string; nodeText: string; filePill: string
 }> = {
   blue:   { border: 'border-blue-700/60',   bg: 'bg-blue-950/30',   label: 'text-blue-400',   nodeBorder: 'border-blue-600/50',   nodeBg: 'bg-blue-900/40',   nodeText: 'text-blue-200',   filePill: 'bg-blue-900/60 text-blue-400 border-blue-700/50'   },
@@ -36,7 +35,7 @@ function roleColor(role: string) {
 
 interface Props {
   components: ArchComponent[]
-  flowLayers?: FlowLayer[]
+  flowLayers?: ArchLayer[]
 }
 
 type ViewMode = 'flow' | 'components'
@@ -88,7 +87,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 // ── Project Flow diagram ─────────────────────────────────────────────────────
 
-function FlowDiagram({ layers }: { layers: FlowLayer[] }) {
+function FlowDiagram({ layers }: { layers: ArchLayer[] }) {
   const [hovered, setHovered] = useState<string | null>(null)
 
   return (

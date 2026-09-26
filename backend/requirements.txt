@@ -5,11 +5,14 @@ pydantic==2.12.5
 pydantic-settings==2.9.1
 httpx==0.28.1          # async HTTP — GitHub API metadata fetch
 numpy                  # RAG index vectors (already a transitive dep via scipy/torch)
+aiofiles>=23.2.1       # required by FastAPI StaticFiles for serving the built frontend
 
 # Optional: richer semantic embeddings (Task 6A)
 # Set EMBED_PROVIDER=sentence-transformers to activate.
 # sentence-transformers==3.3.1
 
 # LLM providers (Task 6B)
-# Uncomment the provider you want to use and set the matching env var.
-# google-generativeai==0.8.3   # GEMINI_API_KEY
+# Default provider is 'echo' — no package or API key required.
+# To use Gemini: uncomment the line below, run `pip install google-generativeai`,
+# and set LLM_PROVIDER=gemini + GEMINI_API_KEY=<key> in your .env file.
+# google-generativeai==0.8.3   # LLM_PROVIDER=gemini  GEMINI_API_KEY=<key>

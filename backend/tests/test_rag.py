@@ -90,7 +90,8 @@ def _():
 # 2. Chunker
 # ===========================================================================
 
-from backend.rag.chunker import chunk_repository, _tokenise, _nearest_symbol
+from backend.rag.chunker import chunk_repository, _nearest_symbol
+from backend.rag.embedder import _tokenise
 
 
 @_test("chunker: _tokenise splits camelCase and snake_case")
@@ -287,6 +288,7 @@ from backend.rag.index import build_index_sync, load_index, index_exists
 def _make_repo(tmp: str) -> tuple[str, list[str], set[str], dict[str, str]]:
     """Create a minimal synthetic repo, return (work_dir, file_paths, important, lang_map)."""
     base = Path(tmp)
+    base.mkdir(parents=True, exist_ok=True)
     (base / "main.py").write_text(
         "from fastapi import FastAPI\napp = FastAPI()\n\n"
         "@app.get('/health')\ndef health(): return {'ok': True}\n\n"
@@ -323,53 +325,54 @@ def _():
 
 @_test("index: index_exists returns True after build")
 def _():
+    import os
     with tempfile.TemporaryDirectory() as repodir:
-        import os
         os.environ["REPOLENS_WORK_DIR"] = repodir   # isolate index files
-        work_dir, file_paths, important, lang_map = _make_repo(repodir + "/repo")
-        Path(repodir + "/repo").mkdir(exist_ok=True)
-        build_index_sync("exists_test", work_dir, file_paths, important, lang_map)
-        assert index_exists("exists_test")
-        os.environ.pop("REPOLENS_WORK_DIR")
+        try:
+            work_dir, file_paths, important, lang_map = _make_repo(repodir + "/repo")
+            build_index_sync("exists_test", work_dir, file_paths, important, lang_map)
+            assert index_exists("exists_test")
+        finally:
+            os.environ.pop("REPOLENS_WORK_DIR", None)
 
 
 @_test("index: load_index returns (vectors, chunks, meta) after build")
 def _():
+    import os
     with tempfile.TemporaryDirectory() as tmp:
-        import os
         os.environ["REPOLENS_WORK_DIR"] = tmp
-        work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
-        Path(tmp + "/repo").mkdir(exist_ok=True)
-        build_index_sync("load_test", work_dir, file_paths, important, lang_map)
-        loaded = load_index("load_test")
-        os.environ.pop("REPOLENS_WORK_DIR")
-
-    assert loaded is not None
-    vectors, chunks, meta = loaded
-    assert vectors.ndim == 2
-    assert len(chunks) == meta.chunk_count
-    assert vectors.shape[0] == meta.chunk_count
-    assert vectors.shape[1] == meta.vector_dim
+        try:
+            work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
+            build_index_sync("load_test", work_dir, file_paths, important, lang_map)
+            loaded = load_index("load_test")
+            assert loaded is not None
+            vectors, chunks, meta = loaded
+            assert vectors.ndim == 2
+            assert len(chunks) == meta.chunk_count
+            assert vectors.shape[0] == meta.chunk_count
+            assert vectors.shape[1] == meta.vector_dim
+        finally:
+            os.environ.pop("REPOLENS_WORK_DIR", None)
 
 
 @_test("index: all chunks have correct repo_id and non-empty text")
 def _():
+    import os
     with tempfile.TemporaryDirectory() as tmp:
-        import os
         os.environ["REPOLENS_WORK_DIR"] = tmp
-        work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
-        Path(tmp + "/repo").mkdir(exist_ok=True)
-        build_index_sync("chunks_test", work_dir, file_paths, important, lang_map)
-        loaded = load_index("chunks_test")
-        os.environ.pop("REPOLENS_WORK_DIR")
-
-    assert loaded is not None
-    _, chunks, _ = loaded
-    for c in chunks:
-        assert c.repo_id == "chunks_test"
-        assert c.text.strip() != ""
-        assert c.start_line >= 1
-        assert c.end_line >= c.start_line
+        try:
+            work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
+            build_index_sync("chunks_test", work_dir, file_paths, important, lang_map)
+            loaded = load_index("chunks_test")
+            assert loaded is not None
+            _, chunks, _ = loaded
+            for c in chunks:
+                assert c.repo_id == "chunks_test"
+                assert c.text.strip() != ""
+                assert c.start_line >= 1
+                assert c.end_line >= c.start_line
+        finally:
+            os.environ.pop("REPOLENS_WORK_DIR", None)
 
 
 # ===========================================================================
@@ -393,59 +396,59 @@ def _():
 
 @_test("retriever: returns ranked results for a real index")
 def _():
+    import os
     with tempfile.TemporaryDirectory() as tmp:
-        import os
         os.environ["REPOLENS_WORK_DIR"] = tmp
-        work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
-        Path(tmp + "/repo").mkdir(exist_ok=True)
-        build_index_sync("retr_test", work_dir, file_paths, important, lang_map)
-        results = retrieve("retr_test", "how does routing work in FastAPI")
-        os.environ.pop("REPOLENS_WORK_DIR")
-
-    assert len(results) > 0
-    # Results must be ranked 1, 2, 3, …
-    for i, r in enumerate(results):
-        assert r.rank == i + 1
-    # Scores must be descending
-    scores = [r.score for r in results]
-    assert scores == sorted(scores, reverse=True)
+        try:
+            work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
+            build_index_sync("retr_test", work_dir, file_paths, important, lang_map)
+            results = retrieve("retr_test", "how does routing work in FastAPI")
+            assert len(results) > 0
+            # Results must be ranked 1, 2, 3, …
+            for i, r in enumerate(results):
+                assert r.rank == i + 1
+            # Scores must be descending
+            scores = [r.score for r in results]
+            assert scores == sorted(scores, reverse=True)
+        finally:
+            os.environ.pop("REPOLENS_WORK_DIR", None)
 
 
 @_test("retriever: top result for 'validate email' contains validation logic")
 def _():
+    import os
     with tempfile.TemporaryDirectory() as tmp:
-        import os
         os.environ["REPOLENS_WORK_DIR"] = tmp
-        work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
-        Path(tmp + "/repo").mkdir(exist_ok=True)
-        build_index_sync("retr_test2", work_dir, file_paths, important, lang_map)
-        results = retrieve("retr_test2", "email validation function", top_k=3)
-        os.environ.pop("REPOLENS_WORK_DIR")
-
-    assert len(results) > 0
-    # The utils.py file with validate_email should appear somewhere in top-3
-    files = [r.file_path for r in results]
-    assert any("utils" in f for f in files), f"Expected utils.py in top results, got: {files}"
+        try:
+            work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
+            build_index_sync("retr_test2", work_dir, file_paths, important, lang_map)
+            results = retrieve("retr_test2", "email validation function", top_k=3)
+            assert len(results) > 0
+            # The utils.py file with validate_email should appear somewhere in top-3
+            files = [r.file_path for r in results]
+            assert any("utils" in f for f in files), f"Expected utils.py in top results, got: {files}"
+        finally:
+            os.environ.pop("REPOLENS_WORK_DIR", None)
 
 
 @_test("retriever: each result has file_path, start_line, end_line, score, text")
 def _():
+    import os
     with tempfile.TemporaryDirectory() as tmp:
-        import os
         os.environ["REPOLENS_WORK_DIR"] = tmp
-        work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
-        Path(tmp + "/repo").mkdir(exist_ok=True)
-        build_index_sync("retr_test3", work_dir, file_paths, important, lang_map)
-        results = retrieve("retr_test3", "create user endpoint", top_k=5)
-        os.environ.pop("REPOLENS_WORK_DIR")
-
-    assert len(results) > 0
-    for r in results:
-        assert r.file_path != ""
-        assert r.start_line >= 1
-        assert r.end_line >= r.start_line
-        assert 0.0 <= r.score <= 1.0
-        assert r.text.strip() != ""
+        try:
+            work_dir, file_paths, important, lang_map = _make_repo(tmp + "/repo")
+            build_index_sync("retr_test3", work_dir, file_paths, important, lang_map)
+            results = retrieve("retr_test3", "create user endpoint", top_k=5)
+            assert len(results) > 0
+            for r in results:
+                assert r.file_path != ""
+                assert r.start_line >= 1
+                assert r.end_line >= r.start_line
+                assert 0.0 <= r.score <= 1.0
+                assert r.text.strip() != ""
+        finally:
+            os.environ.pop("REPOLENS_WORK_DIR", None)
 
 
 # ===========================================================================

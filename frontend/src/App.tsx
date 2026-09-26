@@ -1,14 +1,16 @@
-import { useState, useCallback } from 'react'
-import type { AppPhase, ChatMessage } from './types'
+import { useState, useCallback, useEffect } from 'react'
+import type { AppPhase, ChatMessage, RepoSummary, FileNode, ArchLayer, ArchComponent } from './types'
+import { SUGGESTED_QUESTIONS } from './mockData'
+import { buildArchComponents } from './utils/archUtils'
+
 import {
-  MOCK_SUMMARY,
-  MOCK_FILE_TREE,
-  MOCK_ARCH_COMPONENTS,
-  MOCK_FLOW_LAYERS,
-  MOCK_INITIAL_MESSAGES,
-  SUGGESTED_QUESTIONS,
-  pickMockResponse,
-} from './mockData'
+  fetchHealth,
+  analyzeRepo,
+  fetchSummary,
+  fetchStructure,
+  fetchAnalysis,
+  streamChat,
+} from './api/client'
 
 import Header from './components/Header'
 import RepoInput from './components/RepoInput'
@@ -22,9 +24,29 @@ import LoadingOverlay from './components/LoadingOverlay'
 import ErrorBanner from './components/ErrorBanner'
 
 export default function App() {
+  // ── Backend health ────────────────────────────────────────────────────────
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'ok' | 'error'>('checking')
+  const [backendVersion, setBackendVersion] = useState<string>('')
+
+  useEffect(() => {
+    fetchHealth()
+      .then((h) => {
+        setBackendStatus('ok')
+        setBackendVersion(h.version)
+      })
+      .catch(() => setBackendStatus('error'))
+  }, [])
+
   // ── App phase ─────────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<AppPhase>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+
+  // ── Repository data ───────────────────────────────────────────────────────
+  const [repoId, setRepoId] = useState('')
+  const [summary, setSummary] = useState<RepoSummary | null>(null)
+  const [fileTree, setFileTree] = useState<FileNode | null>(null)
+  const [archLayers, setArchLayers] = useState<ArchLayer[]>([])
+  const [archComponents, setArchComponents] = useState<ArchComponent[]>([])
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -32,30 +54,54 @@ export default function App() {
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
-  function handleAnalyze(url: string) {
+  async function handleAnalyze(url: string) {
     setPhase('analyzing')
     setErrorMessage('')
     setMessages([])
+    setSummary(null)
+    setFileTree(null)
+    setArchLayers([])
+    setArchComponents([])
 
-    setTimeout(() => {
-      try {
-        const parsed = new URL(url)
-        if (parsed.hostname !== 'github.com') throw new Error('Only github.com is supported.')
-      } catch (e) {
-        setErrorMessage(e instanceof Error ? e.message : 'Invalid URL')
-        setPhase('error')
-        return
+    try {
+      // Step 1: trigger ingestion
+      const { repo_id } = await analyzeRepo({ repo_url: url })
+      setRepoId(repo_id)
+
+      // Step 2: fetch summary + file tree + analysis in parallel
+      const [sum, tree, analysis] = await Promise.all([
+        fetchSummary(repo_id),
+        fetchStructure(repo_id),
+        fetchAnalysis(repo_id).catch(() => null),   // analysis is best-effort
+      ])
+
+      setSummary(sum)
+      setFileTree(tree)
+
+      if (analysis && analysis.arch_layers.length > 0) {
+        setArchLayers(analysis.arch_layers)
       }
+      setArchComponents(buildArchComponents(sum))
 
-      setMessages(MOCK_INITIAL_MESSAGES)
+      // Welcome message from the repo itself
+      const repoName = sum.repo_name || url.replace('https://github.com/', '')
+      setMessages([{
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Repository **${repoName}** analyzed! I can answer questions about the code, architecture, and dependencies.\n\nTry one of the suggested questions below, or ask anything about the codebase.`,
+        sources: [],
+      }])
+
       setPhase('ready')
-    }, 1800)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Analysis failed.'
+      setErrorMessage(msg)
+      setPhase('error')
+    }
   }
 
-  // Simulated streaming: adds the user message immediately, then types out
-  // the assistant response word-by-word with a short delay between tokens.
   const handleChat = useCallback((question: string) => {
-    if (isStreaming) return
+    if (isStreaming || !repoId) return
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -74,49 +120,46 @@ export default function App() {
     setMessages((prev) => [...prev, userMsg, assistantPlaceholder])
     setIsStreaming(true)
 
-    const { content, sources } = pickMockResponse(question)
-    // Split by word boundaries, preserving spaces so re-join looks right
-    const tokens = content.match(/\S+\s*/g) ?? [content]
-
-    let accumulated = ''
-    let i = 0
-
-    function tick() {
-      if (i >= tokens.length) {
-        // Done — finalise the message with sources and stop streaming
+    streamChat(repoId, question, {
+      onToken(token) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: m.content + token } : m
+          )
+        )
+      },
+      onDone(sources) {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: accumulated, isStreaming: false, sources }
+              ? { ...m, isStreaming: false, sources }
               : m
           )
         )
         setIsStreaming(false)
-        return
-      }
-
-      accumulated += tokens[i]
-      i++
-
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId ? { ...m, content: accumulated } : m
+      },
+      onError(detail) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: m.content || `⚠️ ${detail}`,
+                  isStreaming: false,
+                  sources: [],
+                }
+              : m
+          )
         )
-      )
-
-      // Vary the interval slightly to feel more natural
-      const delay = 18 + Math.random() * 22
-      setTimeout(tick, delay)
-    }
-
-    // Small initial delay before "typing" starts
-    setTimeout(tick, 320)
-  }, [isStreaming])
+        setIsStreaming(false)
+      },
+    })
+  }, [isStreaming, repoId])
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="h-screen bg-gray-950 text-gray-100 flex flex-col overflow-hidden">
-      <Header backendStatus="ok" backendVersion="mock" />
+      <Header backendStatus={backendStatus} backendVersion={backendVersion} />
 
       <RepoInput onAnalyze={handleAnalyze} isLoading={phase === 'analyzing'} />
 
@@ -130,23 +173,23 @@ export default function App() {
         />
       )}
 
-      {phase === 'ready' && (
+      {phase === 'ready' && summary && fileTree && (
         <div className="flex-1 flex overflow-hidden">
           {/* Sidebar — file explorer */}
           <aside className="w-64 xl:w-72 shrink-0 border-r border-gray-800 overflow-hidden flex flex-col">
-            <FileExplorer root={MOCK_FILE_TREE} />
+            <FileExplorer root={fileTree} />
           </aside>
 
           {/* Main scroll area */}
           <main className="flex-1 overflow-y-auto">
             <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
-              <ProjectOverview summary={MOCK_SUMMARY} />
-              <TechFrameworks summary={MOCK_SUMMARY} />
+              <ProjectOverview summary={summary} />
+              <TechFrameworks summary={summary} />
               <ArchitectureView
-                components={MOCK_ARCH_COMPONENTS}
-                flowLayers={MOCK_FLOW_LAYERS}
+                components={archComponents}
+                flowLayers={archLayers.length > 0 ? archLayers : undefined}
               />
-              <DependenciesPanel dependencies={MOCK_SUMMARY.dependencies} />
+              <DependenciesPanel dependencies={summary.dependencies} />
 
               {/* Chat — fixed height so it doesn't push everything out */}
               <div className="h-[520px]">

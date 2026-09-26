@@ -61,7 +61,40 @@ export interface CitationSource {
   end_line: number
 }
 
+// ---------------------------------------------------------------------------
+// Analysis result (from GET /api/analysis/:repo_id)
+// ---------------------------------------------------------------------------
+
+/** A node within an architecture layer */
+export interface ArchNode {
+  name: string
+  file: string
+  description: string
+}
+
+/** One layer in the architecture flow diagram */
+export interface ArchLayer {
+  id: string
+  label: string
+  color: string   // "blue" | "sky" | "purple" | "orange" | "green" | "gray" | "red" | "cyan"
+  nodes: ArchNode[]
+}
+
+/** Full static analysis result from the backend */
+export interface AnalysisResult {
+  repo_id: string
+  entry_points: { file: string; kind: string; confidence: string; reason: string }[]
+  source_directories: { path: string; role: string; language: string; file_count: number }[]
+  routes: { method: string; path: string; file: string; line: number; handler: string; framework: string }[]
+  arch_layers: ArchLayer[]
+  summary_text: string
+  route_count: number
+}
+
+// ---------------------------------------------------------------------------
 // App-level state machine
+// ---------------------------------------------------------------------------
+
 export type AppPhase =
   | 'idle'        // no repo entered yet
   | 'analyzing'   // POST /api/analyze in flight

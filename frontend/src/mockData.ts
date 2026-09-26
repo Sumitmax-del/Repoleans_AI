@@ -1,10 +1,13 @@
 // ---------------------------------------------------------------------------
-// Mock data used while the backend ingestion pipeline (Sub-Task 2) is not yet
-// connected. Every shape here matches the real API types in types.ts so
-// swapping mock → real data requires only changing the data source.
+// Mock data — kept for reference and as a development fallback.
+// All shapes match the real API types in types.ts.
 // ---------------------------------------------------------------------------
 
-import type { RepoSummary, FileNode, ArchComponent, ChatMessage } from './types'
+import type { RepoSummary, FileNode, ArchComponent, ArchLayer, ChatMessage } from './types'
+
+// Re-export so existing imports of FlowLayer/FlowNode from mockData still compile
+export type { ArchLayer as FlowLayer }
+export type { ArchNode as FlowNode } from './types'
 
 export const MOCK_SUMMARY: RepoSummary = {
   repo_name: 'fastapi / fastapi',
@@ -131,20 +134,7 @@ export const MOCK_ARCH_COMPONENTS: ArchComponent[] = [
 // Architecture flow layers for the enhanced project-flow view
 // ---------------------------------------------------------------------------
 
-export interface FlowLayer {
-  id: string
-  label: string        // e.g. "Entry Point"
-  color: 'blue' | 'purple' | 'sky' | 'green' | 'orange' | 'gray'
-  nodes: FlowNode[]
-}
-
-export interface FlowNode {
-  name: string
-  file: string
-  description: string
-}
-
-export const MOCK_FLOW_LAYERS: FlowLayer[] = [
+export const MOCK_FLOW_LAYERS: ArchLayer[] = [
   {
     id: 'entry',
     label: 'Entry Point',
