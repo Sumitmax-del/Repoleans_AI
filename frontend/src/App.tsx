@@ -158,75 +158,91 @@ export default function App() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="h-screen bg-gray-950 text-gray-100 flex flex-col overflow-hidden">
-      <Header backendStatus={backendStatus} backendVersion={backendVersion} />
+    <div className="h-screen bg-gray-950 text-gray-100 flex flex-col overflow-hidden relative selection:bg-blue-600/30 selection:text-white">
+      {/* Background ambient radial gradients & grid pattern */}
+      <div className="absolute inset-0 bg-grid-ambient pointer-events-none opacity-40 z-0" />
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none animate-pulse-glow" />
+      <div className="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none animate-pulse-glow" />
 
-      <RepoInput onAnalyze={handleAnalyze} isLoading={phase === 'analyzing'} />
+      {/* Main content */}
+      <div className="relative z-10 flex flex-col h-full overflow-hidden">
+        <Header backendStatus={backendStatus} backendVersion={backendVersion} />
 
-      {/* Body */}
-      {phase === 'idle' && <IdleState />}
-      {phase === 'analyzing' && <LoadingOverlay />}
-      {phase === 'error' && (
-        <ErrorBanner
-          message={errorMessage}
-          onRetry={() => setPhase('idle')}
-        />
-      )}
+        <RepoInput onAnalyze={handleAnalyze} isLoading={phase === 'analyzing'} />
 
-      {phase === 'ready' && summary && fileTree && (
-        <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar — file explorer */}
-          <aside className="w-64 xl:w-72 shrink-0 border-r border-gray-800 overflow-hidden flex flex-col">
-            <FileExplorer root={fileTree} />
-          </aside>
+        {/* Body */}
+        {phase === 'idle' && <IdleState />}
+        {phase === 'analyzing' && <LoadingOverlay />}
+        {phase === 'error' && (
+          <ErrorBanner
+            message={errorMessage}
+            onRetry={() => setPhase('idle')}
+          />
+        )}
 
-          {/* Main scroll area */}
-          <main className="flex-1 overflow-y-auto">
-            <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
-              <ProjectOverview summary={summary} />
-              <TechFrameworks summary={summary} />
-              <ArchitectureView
-                components={archComponents}
-                flowLayers={archLayers.length > 0 ? archLayers : undefined}
-              />
-              <DependenciesPanel dependencies={summary.dependencies} />
+        {phase === 'ready' && summary && fileTree && (
+          <div className="flex-1 flex overflow-hidden animate-fade-in p-3 gap-3">
+            {/* Sidebar — file explorer */}
+            <aside className="w-64 xl:w-72 shrink-0 overflow-hidden flex flex-col">
+              <FileExplorer root={fileTree} />
+            </aside>
 
-              {/* Chat — fixed height so it doesn't push everything out */}
-              <div className="h-[520px]">
-                <ChatPanel
-                  messages={messages}
-                  onSend={handleChat}
-                  isStreaming={isStreaming}
-                  disabled={false}
-                  suggestedQuestions={SUGGESTED_QUESTIONS}
+            {/* Main scroll area */}
+            <main className="flex-1 overflow-y-auto pr-1">
+              <div className="max-w-4xl mx-auto space-y-5 pb-6">
+                <ProjectOverview summary={summary} />
+                <TechFrameworks summary={summary} />
+                <ArchitectureView
+                  components={archComponents}
+                  flowLayers={archLayers.length > 0 ? archLayers : undefined}
                 />
+                <DependenciesPanel dependencies={summary.dependencies} />
+
+                {/* Chat — fixed height */}
+                <div className="h-[520px]">
+                  <ChatPanel
+                    messages={messages}
+                    onSend={handleChat}
+                    isStreaming={isStreaming}
+                    disabled={false}
+                    suggestedQuestions={SUGGESTED_QUESTIONS}
+                  />
+                </div>
               </div>
-            </div>
-          </main>
-        </div>
-      )}
+            </main>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
 function IdleState() {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-16">
-      {/* Hero icon */}
-      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" className="text-gray-700 mb-6">
-        <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="11" cy="11" r="3" fill="currentColor" opacity="0.25" />
-      </svg>
-      <h2 className="text-xl font-semibold text-gray-300 mb-2">
+    <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-16 animate-fade-in relative z-10">
+      {/* Floating hero icon with glowing backdrop */}
+      <div className="relative mb-6 flex items-center justify-center group cursor-default">
+        <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-2xl animate-pulse-glow" />
+        <div className="relative w-20 h-20 rounded-2xl bg-gray-900/80 border border-white/[0.1] flex items-center justify-center shadow-2xl backdrop-blur-xl transition-all duration-300 group-hover:scale-105 group-hover:border-blue-400/40">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" className="text-blue-400 drop-shadow-[0_0_15px_rgba(96,165,250,0.5)]">
+            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <circle cx="11" cy="11" r="3" fill="currentColor" opacity="0.3" />
+          </svg>
+        </div>
+      </div>
+
+      <h2 className="text-2xl font-bold bg-gradient-to-r from-white via-gray-100 to-gray-400 bg-clip-text text-transparent mb-2.5 tracking-tight">
         Understand any repository instantly
       </h2>
-      <p className="text-sm text-gray-500 max-w-sm leading-relaxed">
+      <p className="text-sm text-gray-400 max-w-md leading-relaxed">
         Paste a public GitHub URL above. RepoLens will analyze the code, detect
         languages and frameworks, map the architecture, and let you ask questions
         with answers cited to specific files and lines.
       </p>
-      <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-lg w-full">
+
+      {/* Feature cards */}
+      <div className="mt-9 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-xl w-full">
         {[
           { icon: '🔍', label: 'Language & framework detection' },
           { icon: '🗂️', label: 'File tree exploration' },
@@ -234,10 +250,10 @@ function IdleState() {
         ].map((f) => (
           <div
             key={f.label}
-            className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm text-gray-400"
+            className="glass-card rounded-2xl px-5 py-4 text-sm text-gray-300 shadow-lg cursor-default group"
           >
-            <span className="block text-xl mb-1">{f.icon}</span>
-            {f.label}
+            <span className="block text-2xl mb-2 transition-transform duration-200 group-hover:scale-110">{f.icon}</span>
+            <span className="font-medium text-gray-300 group-hover:text-white transition-colors">{f.label}</span>
           </div>
         ))}
       </div>
