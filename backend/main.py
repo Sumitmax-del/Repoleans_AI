@@ -1,6 +1,11 @@
 import logging
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env BEFORE any module reads os.getenv (LLM_PROVIDER, GEMINI_API_KEY, etc.)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -37,8 +42,13 @@ app = FastAPI(
 # Keep CORS for the Vite dev server (used during `npm run dev` development)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=False,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

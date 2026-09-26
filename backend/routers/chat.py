@@ -151,8 +151,16 @@ async def _stream(repo_id: str, question: str):
         })
         return
     except Exception as exc:
-        logger.error("LLM stream error for repo_id=%s: %s", repo_id, exc)
-        yield _sse({"type": "error", "detail": "LLM request failed. Please try again."})
+        err_str = str(exc).lower()
+        if "429" in str(exc) or "resource" in err_str and "exhaust" in err_str or "quota" in err_str:
+            logger.warning("Rate limit hit for repo_id=%s: %s", repo_id, exc)
+            yield _sse({
+                "type":   "error",
+                "detail": "Rate limit exceeded. The free Gemini API allows 5 requests/minute. Please wait about 60 seconds and try again.",
+            })
+        else:
+            logger.error("LLM stream error for repo_id=%s: %s", repo_id, exc)
+            yield _sse({"type": "error", "detail": f"LLM request failed: {exc}"})
         return
 
     # ── Step 4: send done event with citations ───────────────────────────────

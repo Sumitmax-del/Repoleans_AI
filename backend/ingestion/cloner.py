@@ -141,7 +141,7 @@ def clone_repository(repo_url: str, repo_id: str) -> IngestionRecord:
     existing = load_record(repo_id)
     if (
         existing is not None
-        and existing.status not in (IngestionStatus.pending, IngestionStatus.error)
+        and existing.status not in (IngestionStatus.pending, IngestionStatus.error, IngestionStatus.cloning)
         and clone_dir.exists()
         and any(clone_dir.iterdir())
     ):
@@ -149,8 +149,14 @@ def clone_repository(repo_url: str, repo_id: str) -> IngestionRecord:
         return existing
 
     # ── Fresh job directory ────────────────────────────────────────────────
+    # Remove the entire job dir first.  On Windows shutil.rmtree can fail
+    # if files are still locked, so we also remove clone_dir specifically
+    # before invoking git clone.
     if job_dir.exists():
         shutil.rmtree(job_dir, ignore_errors=True)
+    # Belt-and-suspenders: make sure clone_dir is truly gone
+    if clone_dir.exists():
+        shutil.rmtree(clone_dir, ignore_errors=True)
     job_dir.mkdir(parents=True, exist_ok=True)
 
     record = IngestionRecord(
