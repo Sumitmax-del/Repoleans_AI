@@ -25,8 +25,8 @@ logging.basicConfig(
 # ---------------------------------------------------------------------------
 
 # Absolute path to frontend/dist so it works regardless of working directory.
-_HERE = Path(__file__).parent          # backend/
-_DIST = _HERE.parent / "frontend" / "dist"
+HERE = Path(__file__).parent          # backend/
+_DIST = HERE.parent / "frontend" / "dist"
 _INDEX = _DIST / "index.html"
 
 # ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Keep CORS for the Vite dev server (used during `npm run dev` development)
+# Keep CORS for the Vite dev server (used during npm run dev development)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -66,8 +66,8 @@ app.include_router(chat.router)
 # ---------------------------------------------------------------------------
 
 # Serve the compiled Vite assets (JS, CSS, images) at /assets/*.
-# Only mounted when the dist directory exists; this keeps `uvicorn backend.main:app`
-# working even before the first `npm run build`.
+# Only mounted when the dist directory exists; this keeps uvicorn backend.main:app
+# working even before the first npm run build.
 if _DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
 
