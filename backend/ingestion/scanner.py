@@ -199,12 +199,11 @@ _INDICATOR_FILES: dict[str, list[str]] = {
     "Pulumi.yaml":        ["Pulumi"],
 }
 
-# Dep manifests we can parse for package names
+# Dep manifests we can parse for package names (excluding giant lockfiles)
 _DEP_MANIFESTS = {
     "requirements.txt", "requirements-dev.txt", "requirements-test.txt",
-    "pyproject.toml", "setup.py", "setup.cfg", "Pipfile", "Pipfile.lock",
-    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-    "Cargo.toml", "go.mod", "Gemfile", "composer.json",
+    "pyproject.toml", "setup.py", "setup.cfg", "Pipfile",
+    "package.json", "Cargo.toml", "go.mod", "Gemfile", "composer.json",
     "pom.xml", "build.gradle",
 }
 
@@ -224,16 +223,51 @@ _SKIP_DIRS = {
     ".git", ".hg", ".svn",
     "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache",
     ".ruff_cache", ".tox",
-    "build", "dist", "out", "target",
+    "build", "dist", "out", "target", "bin", "obj",
     ".idea", ".vscode", ".vs",
     "vendor", "third_party", "Pods",
-    ".next", ".nuxt", ".turbo",
+    ".next", ".nuxt", ".turbo", ".cache", ".gradle",
     "coverage", ".nyc_output",
     ".eggs", "*.egg-info",
+    ".venv", "venv", "env",
 }
 
-# Max files to include in the tree (avoids enormous trees for huge repos)
-_MAX_TREE_FILES = 2000
+# Extensions to skip entirely (binaries, media, fonts, archives, compiled artifacts, maps)
+_SKIP_EXTS = {
+    # Media & Images
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".bmp", ".tiff",
+    ".mp4", ".mp3", ".wav", ".avi", ".mov", ".flv", ".webm", ".mkv",
+    # Fonts
+    ".woff", ".woff2", ".ttf", ".eot", ".otf",
+    # Archives & Binaries
+    ".zip", ".tar", ".gz", ".br", ".7z", ".rar", ".bz2", ".xz",
+    ".pyc", ".pyo", ".pyd", ".class", ".o", ".obj", ".so", ".dll", ".dylib", ".exe", ".bin", ".dat",
+    ".wasm", ".dex",
+    # Database
+    ".db", ".sqlite", ".sqlite3",
+    # Large generated files & maps
+    ".map", ".min.js", ".min.css", ".bundle.js",
+    # Lockfiles (large and noisy)
+    ".lock",
+    # Docs/PDF
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+}
+
+# Lockfiles and noise files to skip by name
+_SKIP_FILENAMES = {
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "poetry.lock", "cargo.lock", "composer.lock",
+    "pipfile.lock", "gemfile.lock", "mix.lock", "flake.lock",
+}
+
+# Maximum file size for scanning/analysis (250 KB)
+MAX_FILE_SIZE_BYTES = 250 * 1024
+
+# Maximum source files to ingest and process for low-memory environments
+MAX_INGESTED_FILES = 300
+
+# Max files to include in the tree
+_MAX_TREE_FILES = 500
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -275,12 +309,23 @@ def scan_repository(clone_dir: Path) -> ScanResult:
         dir_count += len(dirs)
 
         for fname in files:
+            fname_lower = fname.lower()
+            ext = Path(fname).suffix.lower()
+
+            # Skip lockfiles, noise files, binary/media/font/archive extensions
+            if fname_lower in _SKIP_FILENAMES or ext in _SKIP_EXTS or fname_lower.endswith(".lock"):
+                continue
+
             fpath = root_path / fname
             rel   = (rel_root / fname).as_posix()
 
             try:
                 size = fpath.stat().st_size
             except OSError:
+                continue
+
+            # Skip files larger than 250 KB
+            if size > MAX_FILE_SIZE_BYTES:
                 continue
 
             total_bytes += size
@@ -314,6 +359,22 @@ def scan_repository(clone_dir: Path) -> ScanResult:
                             if keyword in pkg.lower():
                                 framework_set.update(fws)
 
+    # ── Cap total ingested files if repo is huge ──────────────────────────
+    if len(all_files) > MAX_INGESTED_FILES:
+        # Prioritize: important files, config files, source code files
+        def _sort_key(p: Path):
+            r = p.relative_to(clone_dir).as_posix()
+            if _is_important(p.name, r):
+                return 0
+            if p.name in _CONFIG_FILE_NAMES or r in _CONFIG_FILE_NAMES:
+                return 1
+            if _detect_language(p.name):
+                return 2
+            return 3
+
+        all_files.sort(key=_sort_key)
+        all_files = all_files[:MAX_INGESTED_FILES]
+
     # ── Framework detection from directory / file names ───────────────────
     for fpath in all_files[:_MAX_TREE_FILES]:
         name_lower = fpath.name.lower()
@@ -335,6 +396,9 @@ def scan_repository(clone_dir: Path) -> ScanResult:
         if fw not in seen:
             seen.add(fw)
             frameworks.append(fw)
+
+    import gc
+    gc.collect()
 
     return ScanResult(
         file_count=len(all_files),
@@ -562,6 +626,17 @@ def _build_tree(path: Path, root: Path, depth: int = 0) -> FileNode:
                 or (entry.name.startswith(".") and entry.name not in {".github", ".circleci"})
             ):
                 continue
+        elif entry.is_file():
+            fname_lower = entry.name.lower()
+            ext = entry.suffix.lower()
+            if fname_lower in _SKIP_FILENAMES or ext in _SKIP_EXTS or fname_lower.endswith(".lock"):
+                continue
+            try:
+                if entry.stat().st_size > MAX_FILE_SIZE_BYTES:
+                    continue
+            except OSError:
+                continue
+
         children.append(_build_tree(entry, root, depth + 1))
 
     return FileNode(

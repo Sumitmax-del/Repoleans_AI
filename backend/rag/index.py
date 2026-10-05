@@ -30,8 +30,8 @@ from backend.rag.models       import Chunk, IndexMeta
 
 logger = logging.getLogger(__name__)
 
-# Batch size for embedding (keeps memory usage bounded)
-_EMBED_BATCH = 512
+# Batch size for embedding (small batch 10-20 to keep memory low and respect API limits)
+_EMBED_BATCH = 16
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +152,9 @@ def build_index_sync(
 
     logger.info("RAG index [%s]: %d chunks produced", repo_id, len(chunks))
 
+    import gc
+    gc.collect()
+
     # ── Step 2: fit embedder ───────────────────────────────────────────────
     embedder = get_embedder()
     texts    = [c.text for c in chunks]
@@ -168,6 +171,8 @@ def build_index_sync(
         all_vecs.append(vecs)
 
     vectors = np.vstack(all_vecs).astype(np.float32)  # (n, dim)
+    all_vecs.clear()
+    gc.collect()
 
     # ── Step 4: persist ────────────────────────────────────────────────────
     vocab_size = getattr(embedder, "vocab_size", lambda: 0)()
@@ -182,6 +187,7 @@ def build_index_sync(
 
     embedder_state = embedder.get_state() if hasattr(embedder, "get_state") else {}
     _persist(repo_id, vectors, chunks, meta, embedder_state)
+    gc.collect()
 
     logger.info(
         "RAG index [%s]: built — chunks=%d dim=%d provider=%s",

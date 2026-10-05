@@ -261,28 +261,123 @@ class SentenceTransformerEmbedder:
 
 
 # ---------------------------------------------------------------------------
+# Google Gemini embedder (optional — requires google-genai and GEMINI_API_KEY)
+# ---------------------------------------------------------------------------
+
+
+class GeminiEmbedder:
+    """
+    Dense embedder backed by Google Gemini text-embedding-004 model.
+    Processes in small batches (10-20 items) with a sleep between requests
+    to avoid 429 rate limit errors on low-tier keys.
+    """
+
+    provider_name = "gemini"
+
+    _DEFAULT_MODEL = "text-embedding-004"
+
+    def __init__(self) -> None:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise EnvironmentError(
+                "GEMINI_API_KEY is not set. Cannot initialize GeminiEmbedder."
+            )
+        from google import genai  # noqa: PLC0415
+
+        self._client = genai.Client(api_key=api_key)
+        self._model = os.getenv("EMBED_MODEL", self._DEFAULT_MODEL)
+
+    def fit(self, texts: list[str]) -> None:
+        pass  # Pre-trained model
+
+    def transform(self, texts: list[str]) -> np.ndarray:
+        import time  # noqa: PLC0415
+        import gc    # noqa: PLC0415
+
+        if not texts:
+            return np.zeros((0, 768), dtype=np.float32)
+
+        batch_size = 16
+        all_vecs: list[list[float]] = []
+
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            cleaned_batch = [t if t.strip() else "code" for t in batch]
+            try:
+                result = self._client.models.embed_content(
+                    model=self._model,
+                    contents=cleaned_batch,
+                )
+                if hasattr(result, "embeddings") and result.embeddings:
+                    for emb in result.embeddings:
+                        all_vecs.append(emb.values)
+                elif hasattr(result, "embedding") and result.embedding:
+                    all_vecs.append(result.embedding.values)
+            except Exception as exc:
+                logger.warning("Gemini embedding batch failed: %s; falling back to zero vector", exc)
+                dim = len(all_vecs[0]) if all_vecs else 768
+                for _ in batch:
+                    all_vecs.append([0.0] * dim)
+
+            # Tiny sleep to avoid 429 rate limit
+            time.sleep(0.2)
+            gc.collect()
+
+        arr = np.array(all_vecs, dtype=np.float32)
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        arr /= norms
+        return arr
+
+    def transform_query(self, text: str) -> np.ndarray:
+        return self.transform([text])[0]
+
+    def vocab_size(self) -> int:
+        return 0
+
+    def get_state(self) -> dict:
+        return {}
+
+    def set_state(self, state: dict) -> None:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
 
-def get_embedder() -> TFIDFEmbedder | SentenceTransformerEmbedder:
+def get_embedder() -> EmbedderProtocol:
     """
-    Return an embedder instance selected by the ``EMBED_PROVIDER`` env var.
+    Return an embedder instance selected by the ``EMBED_PROVIDER`` or
+    ``EMBEDDING_PROVIDER`` env var.
 
     Values
     ------
     tfidf                  (default) — no extra dependencies
+    gemini                 — uses Google GenAI text-embedding-004
     sentence-transformers  — requires ``pip install sentence-transformers``
     """
-    provider = os.getenv("EMBED_PROVIDER", "tfidf").lower().strip()
+    provider = (
+        os.getenv("EMBED_PROVIDER")
+        or os.getenv("EMBEDDING_PROVIDER")
+        or "tfidf"
+    ).lower().strip()
 
     if provider == "tfidf":
         return TFIDFEmbedder()
+
+    if provider in ("gemini", "google", "google-genai"):
+        try:
+            return GeminiEmbedder()
+        except Exception as exc:
+            logger.warning("Failed to initialize GeminiEmbedder (%s); falling back to TF-IDF", exc)
+            return TFIDFEmbedder()
 
     if provider in ("sentence-transformers", "sentence_transformers", "st"):
         return SentenceTransformerEmbedder()
 
     raise ValueError(
         f"Unknown EMBED_PROVIDER='{provider}'. "
-        "Supported: 'tfidf' (default), 'sentence-transformers'."
+        "Supported: 'tfidf' (default), 'gemini', 'sentence-transformers'."
     )

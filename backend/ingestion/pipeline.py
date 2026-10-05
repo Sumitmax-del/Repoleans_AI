@@ -88,6 +88,9 @@ async def run_ingestion(repo_url: str, repo_id: str) -> IngestionRecord:
     record.status = IngestionStatus.ready
     save_record(record)
 
+    import gc
+    gc.collect()
+
     logger.info(
         "Ingestion complete: repo_id=%s  files=%d  lang=%s",
         repo_id,
@@ -98,6 +101,7 @@ async def run_ingestion(repo_url: str, repo_id: str) -> IngestionRecord:
     # ── Stage 4: static analysis (non-fatal) ─────────────────────────────
     try:
         await run_analysis(record)
+        gc.collect()
     except Exception as exc:
         logger.warning("Post-ingestion analysis failed for repo_id=%s: %s", repo_id, exc)
 
@@ -116,9 +120,11 @@ async def run_ingestion(repo_url: str, repo_id: str) -> IngestionRecord:
                 important_files = important,
                 language_map   = lang_map,
             )
+            gc.collect()
         except Exception as exc:
             logger.warning("Post-ingestion RAG index failed for repo_id=%s: %s", repo_id, exc)
 
+    gc.collect()
     return record
 
 

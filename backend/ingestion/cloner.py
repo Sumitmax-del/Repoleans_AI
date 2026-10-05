@@ -187,7 +187,6 @@ def clone_repository(repo_url: str, repo_id: str) -> IngestionRecord:
             "--depth", "1",          # shallow: only latest commit
             "--single-branch",       # don't fetch all branches
             "--no-tags",             # skip tag objects
-            "--filter=blob:none",    # don't download blobs yet (treeless clone)
             "--quiet",
             repo_url,
             str(clone_dir),
@@ -211,12 +210,13 @@ def clone_repository(repo_url: str, repo_id: str) -> IngestionRecord:
         save_record(record)
         raise RuntimeError(record.error_message) from exc
 
-    # ── Now materialise the blobs (needed for file content analysis) ───────
-    try:
-        _run_git(["fetch", "--filter=blob:none", "--quiet"], cwd=clone_dir)
-    except RuntimeError:
-        # Non-fatal: treeless clone still gives us the tree for scanning
-        logger.warning("Blob fetch failed; file content analysis may be limited.")
+    # ── Remove .git to save space (we don't need history) ─────────────────
+    git_dir = clone_dir / ".git"
+    if git_dir.exists():
+        shutil.rmtree(git_dir, ignore_errors=True)
+
+    import gc
+    gc.collect()
 
     # ── Size guard ────────────────────────────────────────────────────────
     total = _dir_size(clone_dir)
@@ -229,11 +229,6 @@ def clone_repository(repo_url: str, repo_id: str) -> IngestionRecord:
         )
         save_record(record)
         raise RuntimeError(record.error_message)
-
-    # ── Remove .git to save space (we don't need history) ─────────────────
-    git_dir = clone_dir / ".git"
-    if git_dir.exists():
-        shutil.rmtree(git_dir, ignore_errors=True)
 
     record.status = IngestionStatus.scanning
     record.work_dir = str(clone_dir)

@@ -87,20 +87,38 @@ _CONFIG_EXTS = {
 }
 
 # Extensions to skip entirely
+# Maximum file size to chunk (250 KB)
+MAX_FILE_SIZE_BYTES = 250 * 1024
+
+# Safety limit for total chunks stored in memory for low-RAM hosts
+MAX_TOTAL_CHUNKS = 800
+
+# Extensions to skip entirely
 _SKIP_EXTS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
-    ".woff", ".woff2", ".ttf", ".eot",
-    ".zip", ".tar", ".gz", ".br",
-    ".pyc", ".pyo", ".class", ".o", ".so", ".dll", ".exe",
-    ".lock",   # package-lock.json is too large and noisy
-    ".map",    # JS source maps
+    # Media & Images
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".bmp", ".tiff",
+    ".mp4", ".mp3", ".wav", ".avi", ".mov", ".flv", ".webm", ".mkv",
+    # Fonts
+    ".woff", ".woff2", ".ttf", ".eot", ".otf",
+    # Archives & Binaries
+    ".zip", ".tar", ".gz", ".br", ".7z", ".rar", ".bz2", ".xz",
+    ".pyc", ".pyo", ".pyd", ".class", ".o", ".obj", ".so", ".dll", ".dylib", ".exe", ".bin", ".dat",
+    ".wasm", ".dex",
+    # Database
+    ".db", ".sqlite", ".sqlite3",
+    # Large generated files & maps
+    ".map", ".min.js", ".min.css", ".bundle.js",
+    # Lockfiles
+    ".lock",
+    # Docs/PDF
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 }
 
 # Filenames to skip regardless of extension
 _SKIP_FILENAMES = {
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-    "poetry.lock", "Cargo.lock", "composer.lock",
-    "Pipfile.lock",
+    "poetry.lock", "cargo.lock", "composer.lock",
+    "pipfile.lock", "gemfile.lock", "mix.lock", "flake.lock",
 }
 
 
@@ -133,16 +151,22 @@ def chunk_repository(
     language_map:
         Mapping of repo-relative path → detected language (from scanner).
     """
+    import gc
+
     important_files = important_files or set()
     language_map    = language_map or {}
     chunks: list[Chunk] = []
 
     for rel_path in file_paths:
-        fname = Path(rel_path).name
+        if len(chunks) >= MAX_TOTAL_CHUNKS:
+            logger.info("Reached maximum chunk count (%d), stopping chunking.", MAX_TOTAL_CHUNKS)
+            break
+
+        fname = Path(rel_path).name.lower()
         ext   = Path(rel_path).suffix.lower()
 
         # Skip binary / generated / lock files
-        if ext in _SKIP_EXTS or fname in _SKIP_FILENAMES:
+        if ext in _SKIP_EXTS or fname in _SKIP_FILENAMES or fname.endswith(".lock"):
             continue
 
         abs_path = clone_dir / rel_path
@@ -150,6 +174,8 @@ def chunk_repository(
             continue
 
         try:
+            if abs_path.stat().st_size > MAX_FILE_SIZE_BYTES:
+                continue
             text = abs_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
@@ -164,6 +190,7 @@ def chunk_repository(
         file_chunks = _chunk_file(lines, rel_path, repo_id, language, important, ext)
         chunks.extend(file_chunks)
 
+    gc.collect()
     logger.debug("Chunked %d files → %d chunks", len(file_paths), len(chunks))
     return chunks
 
