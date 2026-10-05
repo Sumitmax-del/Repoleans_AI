@@ -39,8 +39,6 @@ COPY README.md ./
 # Copy compiled frontend from Stage 1
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
-# Copy .env.example as a reference (actual .env is set via platform env vars)
-COPY .env.example ./
 
 EXPOSE 8000
 
