@@ -39,15 +39,27 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Keep CORS for the Vite dev server (used during npm run dev development)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+# CORS — dev localhost origins + optional production origin from env
+import os as _os
+
+_allowed_origin = _os.getenv("ALLOWED_ORIGIN")  # e.g. "https://repolens.onrender.com"
+
+if _allowed_origin:
+    # Explicit production origin + dev defaults
+    _cors_origins: list[str] = [
+        _allowed_origin,
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-    ],
+    ]
+else:
+    # No explicit origin → allow all (safe when SPA is served from same process)
+    _cors_origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -13,6 +13,5 @@ aiofiles>=23.2.1       # required by FastAPI StaticFiles for serving the built f
 
 # LLM providers (Task 6B)
 # Default provider is 'echo' — no package or API key required.
-# To use Gemini: uncomment the line below, run `pip install google-generativeai`,
-# and set LLM_PROVIDER=gemini + GEMINI_API_KEY=<key> in your .env file.
-# google-generativeai==0.8.3   # LLM_PROVIDER=gemini  GEMINI_API_KEY=<key>
+# To use Gemini set LLM_PROVIDER=gemini + GEMINI_API_KEY=<key> in your .env file.
+google-genai>=0.1.1        # LLM_PROVIDER=gemini  GEMINI_API_KEY=<key>

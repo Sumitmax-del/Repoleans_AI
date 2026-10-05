@@ -1,0 +1,40 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (rebuilt inside container)
+node_modules
+frontend/node_modules
+
+# Build outputs (rebuilt in Stage 1)
+frontend/dist
+
+# Python bytecode
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv
+venv
+env
+
+# Secrets (injected via platform env vars)
+.env
+.env.*
+
+# Logs
+*.log
+
+# IDE / OS
+.idea
+.vscode
+.vs
+.DS_Store
+Thumbs.db
+*.swp
+
+# Non-essential project files
+bob_sessions
+repolens-mvp-plan.md
